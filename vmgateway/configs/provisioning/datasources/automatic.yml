@@ -1,0 +1,9 @@
+apiVersion: 1
+datasources:
+  - name: prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: http://vmgateway:8428
+    jsonData:
+      manageAlerts: false

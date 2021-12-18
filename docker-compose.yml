@@ -1,0 +1,145 @@
+version: '3.8'
+
+networks:
+  monitoring:
+    driver: overlay
+    driver_opts:
+      encrypted: ""
+    attachable: true
+    name: monitoring
+
+volumes:
+  vmagent_data:
+  vmgateway_data:
+  grafana-storage:
+
+services:
+  # The services listed below are a part of the monitoring gateway
+  #
+  # grafana is a single instance installation of grafana to display the metrics in a dashboard format
+  grafana:
+    image: grafana/grafana-oss
+    volumes:
+      - grafana-storage:/var/lib/grafana
+    networks:
+      - monitoring
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD__FILE: "/run/secrets/gf_admin_password"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: "/etc/grafana/provisioning/dashboards.d/home.json"
+    secrets:
+      - gf_admin_password
+    ports:
+      - "3000:3000"
+    configs:
+      - source: gfautomaticdashboard
+        target: /etc/grafana/provisioning/dashboards/automatic.yml
+      - source: gfhomedashboard
+        target: /etc/grafana/provisioning/dashboards.d/home.json
+      - source: gfdatasource
+        target: /etc/grafana/provisioning/datasources/automatic.yml
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.monitoringrole == gateway
+        max_replicas_per_node: 1
+      resources:
+        limits:
+          memory: 1G
+
+  # vmgateway is a single node "gateway" instance of victoriametrics.  Replication and multiple gateways are unsupported in this stack
+  #
+  # vmgateway only runs on nodes that have been labeled with monitoringrole set to gateway
+  vmgateway:
+    image: victoriametrics/victoria-metrics:latest
+    volumes:
+      - vmgateway_data:/opt/vmgateway/storage
+    command:
+      - '-promscrape.config=./prometheus.yml'
+      - '-storageDataPath=/opt/vmgateway/storage'
+      - '-httpListenAddr=0.0.0.0:8428'
+    networks:
+      - monitoring
+    configs:
+      - source: vmgateway
+        target: /prometheus.yml
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.monitoringrole == gateway
+        max_replicas_per_node: 1
+      resources:
+        limits:
+          memory: 512M
+    
+  # The services listed below are part of the monitoring agent
+  #
+  # node-exporter collects local system metrics on the docker node and exposes them via local http server
+  node-exporter:
+    image: prom/node-exporter:latest
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    networks:
+      - monitoring
+    deploy:
+      mode: global
+      resources:
+        limits:
+          memory: 512M
+
+  # vmagent scrapes metrics exported from node-exporter and then pushes them to the remote victory-metrics gateway node
+  vmagent:
+    image: victoriametrics/vmagent:latest
+    volumes:
+      - vmagent_data:/opt/vmagent/storage
+    environment:
+      # We replace the "job" value to the friendlier node hostname so that it appears as such in the Grafana dashboard
+      VMAGENT_JOB: "{{.Node.Hostname}}"
+    command:
+      - '-promscrape.config=./prometheus.yml'
+      - '-remoteWrite.tmpDataPath=/opt/vmagent/storage'
+      - '-remoteWrite.url=http://vmgateway:8428/api/v1/write'
+    depends_on:
+      - node-exporter
+    networks:
+      - monitoring
+    configs:
+      - source: vmagent
+        target: /prometheus.yml
+    deploy:
+      mode: global
+      resources:
+        limits:
+          memory: 512M
+configs:
+  vmagent:
+    template_driver: golang
+    file: ./vmagent/configs/prometheus.yml.tmpl
+    external: false
+  vmgateway:
+    template_driver: golang
+    file: ./vmgateway/configs/prometheus.yml.tmpl
+    external: false
+  gfautomaticdashboard:
+    file: ./vmgateway/configs/provisioning/dashboards/automatic.yml
+    external: false
+  gfhomedashboard:
+    file: ./vmgateway/configs/provisioning/dashboards.d/home.json
+    external: false
+  gfdatasource:
+    file: ./vmgateway/configs/provisioning/datasources/automatic.yml
+    external: false
+
+secrets:
+  gf_admin_password:
+    file: ./vmgateway/secrets/gf_admin_password.txt
