@@ -5,3 +5,5 @@ scrape_configs:
   - job_name: {{ env "VMAGENT_JOB" }}
     static_configs:
       - targets: ['node-exporter:9100']
+scrape_config_files:
+- scrape/*.yml
