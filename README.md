@@ -2,7 +2,8 @@
 monitoring/metrics in a stack
 
 ## Prerequisites
-A pre-existing docker swarm already setup and configured is necessary for orchestration of the stack.
+* A pre-existing docker swarm already setup and configured is necessary for orchestration of the stack.
+* A domain or subdomain with the A record pointed to the IP address of the gateway node for automatic issuance of a Let's Encrypt SSL certificate.
 
 ## Introduction
 
@@ -21,9 +22,10 @@ The mias stack leverages single node, non-replicated, containers of the followin
 * [node-exporter](https://hub.docker.com/r/prom/node-exporter) courtesy of Prometheus
 * [vmagent](https://hub.docker.com/r/victoriametrics/vmagent) courtesy of VictoriaMetrics
 * [vmgateway](https://hub.docker.com/r/victoriametrics/victoria-metrics/) "victoria-metrics-prod" courtesy of VictoriaMetrics
+* [caddy](https://hub.docker.com/_/caddy) "Caddy" courtesy of the Caddy Docker Maintainers
 
 ## Exposed ports
-No additional external ports are opened beyond port `3000` of the Grafana container hosting the vmgateway service.
+No additional external ports are opened beyond ports `443` and `80` of the Grafana container hosting the vmgateway service.
 
 # Installation
 
@@ -50,11 +52,11 @@ Set a unique Grafana dashboard password in the following file:
 
 Deploy the stack to all docker worker nodes.  From the manager node type:
 ```
-docker stack deploy -c docker-compose.yml monitoring
+MIAS_DOMAIN="your-specified-domain.com" docker stack deploy -c docker-compose.yml monitoring
 ```
 
 ## Post installation
-Visit port `3000` of the labeled gateway node and use the username `admin` with the previously specified password.
+Visit port `https://your-specified-domain.com` use the username `admin` with the previously specified password.
 
 ## Tagging images
 You may desire to tag the images within `docker-compose.yml` instead of relying upon the latest images for a more consistent deployment experience in production.
@@ -66,6 +68,7 @@ docker service logs monitoring_grafana -f
 docker service logs monitoring_node-exporter -f
 docker service logs monitoring_vmagent -f
 docker service logs monitoring_vmgateway -f
+docker service logs monitoring_caddy -f
 ```
 
 ## Credits
