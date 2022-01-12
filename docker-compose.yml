@@ -12,6 +12,9 @@ volumes:
   vmagent_data:
   vmgateway_data:
   grafana-storage:
+  caddy_data:
+    external: true
+  caddy_config:
 
 services:
   # The services listed below are a part of the monitoring gateway
@@ -26,10 +29,10 @@ services:
     environment:
       GF_SECURITY_ADMIN_PASSWORD__FILE: "/run/secrets/gf_admin_password"
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: "/etc/grafana/provisioning/dashboards.d/home.json"
+      GF_SERVER_DOMAIN: "${MAIS_DOMAIN}"
+      GF_SERVER_ROOT_URL: "https://${MIAS_DOMAIN}"
     secrets:
       - gf_admin_password
-    ports:
-      - "3000:3000"
     configs:
       - source: gfautomaticdashboard
         target: /etc/grafana/provisioning/dashboards/automatic.yml
@@ -74,7 +77,33 @@ services:
       resources:
         limits:
           memory: 512M
-    
+  # caddyserver is a reverse proxy featuring automatic letsencrypt certificates.  It is used to expose the Grafana dashboard to the Internet.
+  caddy:
+    image: caddy:latest
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - monitoring
+    environment:
+      MIAS_DOMAIN: ${MIAS_DOMAIN}
+    configs:
+      - source: caddy
+        target: /etc/caddy/Caddyfile
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.monitoringrole == gateway
+        max_replicas_per_node: 1
+      resources:
+        limits:
+          memory: 512M
+
   # The services listed below are part of the monitoring agent
   #
   # node-exporter collects local system metrics on the docker node and exposes them via local http server
@@ -138,6 +167,10 @@ configs:
     external: false
   gfdatasource:
     file: ./vmgateway/configs/provisioning/datasources/automatic.yml
+    external: false
+  caddy:
+    template_driver: golang
+    file: ./caddy/configs/Caddyfile.tmpl
     external: false
 
 secrets:
