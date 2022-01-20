@@ -40,6 +40,8 @@ services:
         target: /etc/grafana/provisioning/dashboards.d/home.json
       - source: gfdatasource
         target: /etc/grafana/provisioning/datasources/automatic.yml
+    depends_on:
+      - caddy
     deploy:
       mode: replicated
       replicas: 1
@@ -106,45 +108,24 @@ services:
 
   # The services listed below are part of the monitoring agent
   #
-  # node-exporter collects local system metrics on the docker node and exposes them via local http server
-  node-exporter:
-    image: prom/node-exporter:latest
+  # vmagent is a bundled multi-service image that scrapes metrics exported from node-exporter and then pushes them to the remote victory-metrics gateway node
+  vmagent:
+    image: keith/mais-agent:latest
     volumes:
+      - vmagent_data:/opt/vmagent/storage
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - /:/rootfs:ro
-    command:
-      - '--path.procfs=/host/proc'
-      - '--path.rootfs=/rootfs'
-      - '--path.sysfs=/host/sys'
-      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
-    networks:
-      - monitoring
-    deploy:
-      mode: global
-      resources:
-        limits:
-          memory: 512M
-
-  # vmagent scrapes metrics exported from node-exporter and then pushes them to the remote victory-metrics gateway node
-  vmagent:
-    image: victoriametrics/vmagent:latest
-    volumes:
-      - vmagent_data:/opt/vmagent/storage
     environment:
       # We replace the "job" value to the friendlier node hostname so that it appears as such in the Grafana dashboard
       VMAGENT_JOB: "{{.Node.Hostname}}"
-    command:
-      - '-promscrape.config=./prometheus.yml'
-      - '-remoteWrite.tmpDataPath=/opt/vmagent/storage'
-      - '-remoteWrite.url=http://vmgateway:8428/api/v1/write'
     depends_on:
-      - node-exporter
+      - vmgateway
     networks:
       - monitoring
     configs:
       - source: vmagent
-        target: /prometheus.yml
+        target: /project/prometheus.yml
     deploy:
       mode: global
       resources:
