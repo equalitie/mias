@@ -110,7 +110,7 @@ services:
   #
   # vmagent is a bundled multi-service image that scrapes metrics exported from node-exporter and then pushes them to the remote victory-metrics gateway node
   vmagent:
-    image: keith/mais-agent:latest
+    image: keith/mias-agent:v0.0.2
     volumes:
       - vmagent_data:/opt/vmagent/storage
       - /proc:/host/proc:ro
