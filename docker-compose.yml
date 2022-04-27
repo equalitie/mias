@@ -57,7 +57,7 @@ services:
   #
   # vmgateway only runs on nodes that have been labeled with monitoringrole set to gateway
   vmgateway:
-    image: victoriametrics/victoria-metrics:latest
+    image: victoriametrics/victoria-metrics:v1.76.1
     volumes:
       - vmgateway_data:/opt/vmgateway/storage
     command:
